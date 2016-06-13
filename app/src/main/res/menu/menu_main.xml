@@ -1,0 +1,11 @@
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    tools:context="com.aurora.tcrypto.ui.MainActivity">
+
+    <item
+        android:id="@+id/item_action_net_demo"
+        android:orderInCategory="100"
+        android:title="@string/action_net_demo"
+        app:showAsAction="never" />
+</menu>
