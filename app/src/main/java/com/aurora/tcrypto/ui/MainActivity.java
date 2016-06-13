@@ -6,10 +6,14 @@ import java.io.FileInputStream;
 import java.io.FileWriter;
 import java.io.IOException;
 
+import java.io.UnsupportedEncodingException;
 import java.security.InvalidAlgorithmParameterException;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
 
+import android.database.Cursor;
+import android.net.Uri;
+import android.provider.MediaStore;
 import android.util.Log;
 import android.os.Bundle;
 import android.os.Environment;
@@ -38,16 +42,14 @@ import javax.crypto.IllegalBlockSizeException;
 import javax.crypto.NoSuchPaddingException;
 
 public class MainActivity extends AppCompatActivity {
-    private final String SAVED_GK = "part_key";
-    private final String SAVED_VK = "verif_key";
     private final int CHOOSE_FILE_REQUEST_CODE = 0xff;
 
     private class MenuItemClickListener implements Toolbar.OnMenuItemClickListener {
         public boolean onMenuItemClick(MenuItem item) {
-            switch ( item.getItemId() ) {
+            switch (item.getItemId()) {
                 case R.id.item_action_net_demo:
                     Intent netDemoLaunchIntent = new Intent(
-                        MainActivity.this, NetLogActivity.class );
+                            MainActivity.this, NetLogActivity.class);
                     startActivity(netDemoLaunchIntent);
                     return true;
                 default:
@@ -61,7 +63,7 @@ public class MainActivity extends AppCompatActivity {
             try {
                 MainActivity mainActivity = MainActivity.this;
                 EditText modulusEditText = mainActivity.modulusEditText;
-                int modulus = Integer.valueOf( modulusEditText.getText().toString() );
+                int modulus = Integer.valueOf(modulusEditText.getText().toString());
                 GenerateParam.generateInitParameters(modulus);
             } catch (NumberFormatException e) {
                 e.printStackTrace();
@@ -94,8 +96,8 @@ public class MainActivity extends AppCompatActivity {
                 e.printStackTrace();
             } catch (android.content.ActivityNotFoundException e) {
                 Toast.makeText(
-                    getApplicationContext(),
-                    "No file manager found", Toast.LENGTH_LONG ).show();
+                        getApplicationContext(),
+                        "No file manager found", Toast.LENGTH_LONG).show();
             }
         }
     }
@@ -105,17 +107,17 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        this.setInitButton = (Button)findViewById(R.id.set_init_button);
-        this.setInitButton.setOnClickListener( new SetInitButtonClickListener() );
+        this.setInitButton = (Button) findViewById(R.id.set_init_button);
+        this.setInitButton.setOnClickListener(new SetInitButtonClickListener());
 
-        this.chooseFileButton = (Button)findViewById(R.id.choose_file_button);
-        this.chooseFileButton.setOnClickListener( new ChooseFileButtonListener() );
+        this.chooseFileButton = (Button) findViewById(R.id.choose_file_button);
+        this.chooseFileButton.setOnClickListener(new ChooseFileButtonListener());
 
-        this.modulusEditText = (EditText)findViewById(R.id.numberN);
+        this.modulusEditText = (EditText) findViewById(R.id.numberN);
 
-        this.toolbar = (Toolbar)findViewById(R.id.toolbar);
+        this.toolbar = (Toolbar) findViewById(R.id.toolbar);
         this.toolbar.inflateMenu(R.menu.menu_main);
-        this.toolbar.setOnMenuItemClickListener( new MenuItemClickListener() );
+        this.toolbar.setOnMenuItemClickListener(new MenuItemClickListener());
     }
 
     @Override
@@ -124,44 +126,99 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
 
-        switch(requestCode) {
+        switch (requestCode) {
             case CHOOSE_FILE_REQUEST_CODE:
-                String filepath = data.getDataString();
-                Toast.makeText(
-                    getApplicationContext(),
-                    String.format("File: %s", filepath), Toast.LENGTH_LONG ).show();
-                onSelectedFile(filepath);
+                Uri filepath = data.getData();
+                File fileName = new File(getRealPathFromURI(filepath));
+                onSelectedFile(fileName.toString());
+                break;
             default:
                 break;
         }
     }
 
+    private String getRealPathFromURI(Uri contentURI) {
+        String result;
+        Cursor cursor = getContentResolver().query(contentURI, null, null, null, null);
+        if (cursor == null) {
+            result = contentURI.getPath();
+        } else {
+            cursor.moveToFirst();
+            int idx = cursor.getColumnIndex(MediaStore.Images.ImageColumns.DATA);
+            result = cursor.getString(idx);
+            cursor.close();
+        }
+        return result;
+    }
+
     private void onSelectedFile(String fileName) {
         try {
-            showDialog();
+
+            showDialog(fileName);
             ad.show();
-            String fileContent = openFile(fileName);
-            String secretKey = "72394503829348502493849291038473";
-            String iv = "5151515151515151";
-            CBC cbc = new CBC(secretKey, iv);
-            Log.e("Original: ", fileContent);
-            Log.e("FileName", fileName);
-            String encrypted = cbc.encrypt(fileContent);
-//            String encrypted = cbc.decrypt(fileContent);
-            writeFile(fileName, encrypted);
-        } catch ( IOException | NoSuchAlgorithmException | NoSuchPaddingException e ) {
-            e.printStackTrace();
-        } catch (IllegalBlockSizeException e) {
-            e.printStackTrace();
-        } catch (BadPaddingException e) {
-            e.printStackTrace();
-        } catch (InvalidAlgorithmParameterException e) {
-            e.printStackTrace();
-        } catch (InvalidKeyException e) {
+        } catch (IOException | NoSuchAlgorithmException | NoSuchPaddingException e) {
             e.printStackTrace();
         }
 
         Toast.makeText(getApplicationContext(), fileName, Toast.LENGTH_LONG).show();
+    }
+
+    private void showDialog(final String fileName) throws IOException, NoSuchAlgorithmException, NoSuchPaddingException {
+
+        context = MainActivity.this;
+        String title = "Вибір дії";
+        String message = "Обрано файл ";
+        String button1String = "Зашифрувати";
+        String button2String = "Розшифрувати";
+
+        final String fileContent = openFile(fileName);
+
+        ad = new AlertDialog.Builder(context);
+        ad.setTitle(title);
+        ad.setMessage(message);
+        ad.setPositiveButton(button1String, new DialogInterface.OnClickListener() {
+            public void onClick(DialogInterface dialog, int arg1) {
+                Toast.makeText(context, "файл буде шифруватись", Toast.LENGTH_LONG).show();
+                String encrypted = null;
+
+                try {
+                    String secretKey = GenerateParam.generateSymKey();
+                    CBC cbc = new CBC(secretKey);
+                    encrypted = cbc.encrypt(fileContent);
+                    writeFile(fileName, encrypted);
+                    saveSymKey(fileName, secretKey);
+                } catch (InvalidAlgorithmParameterException | InvalidKeyException
+                        | BadPaddingException | IllegalBlockSizeException
+                        | UnsupportedEncodingException | NoSuchAlgorithmException | NoSuchPaddingException e) {
+                    e.printStackTrace();
+                }
+
+            }
+        });
+        ad.setNegativeButton(button2String, new DialogInterface.OnClickListener() {
+            public void onClick(DialogInterface dialog, int arg1) {
+                Toast.makeText(context, "файл буде розшифровуватись", Toast.LENGTH_LONG).show();
+                String decrypted = null;
+
+                try {
+                    String secretKey = loadSymKey(fileName);
+                    CBC cbc = new CBC(secretKey);
+                    decrypted = cbc.decrypt(fileContent);
+                    writeFile(fileName, decrypted);
+                } catch (InvalidAlgorithmParameterException | InvalidKeyException
+                        | BadPaddingException | IllegalBlockSizeException
+                        | UnsupportedEncodingException | NoSuchAlgorithmException | NoSuchPaddingException e) {
+                    e.printStackTrace();
+                }
+            }
+        });
+        ad.setCancelable(true);
+        ad.setOnCancelListener(new DialogInterface.OnCancelListener() {
+            public void onCancel(DialogInterface dialog) {
+                Toast.makeText(context, "Вы ничего не выбрали",
+                        Toast.LENGTH_LONG).show();
+            }
+        });
     }
 
     private String openFile(String filepath) throws IOException {
@@ -182,73 +239,31 @@ public class MainActivity extends AppCompatActivity {
     private void writeFile(String filePath, String fileContent) {
         if (!Environment.getExternalStorageState().equals(
                 Environment.MEDIA_MOUNTED)) {
-            Log.d("1111", "SD-карта не доступна: " + Environment.getExternalStorageState());
+            Log.d("errorSD", "SD card is unavailable " + Environment.getExternalStorageState());
             return;
         }
-
-        File sdPath = Environment.getExternalStorageDirectory();
-        sdPath = new File(sdPath.getAbsolutePath() + "/");
-        sdPath.mkdirs();
-        File sdFile = new File(sdPath, "LoremIpsum1.txt");
-//        File sdFile = new File("/storage/emulated/0/", "LoremIpsum.txt");
+        File sdFile = new File(filePath);
 
         try {
             BufferedWriter bw = new BufferedWriter(new FileWriter(sdFile));
             bw.write(fileContent);
             bw.close();
-            Log.d("222", "Файл записан на SD: " + sdFile.getAbsolutePath());
         } catch (IOException e) {
             e.printStackTrace();
         }
     }
 
-    private void saveText() {
-        sPref = getSharedPreferences("MyKeysXML", MODE_PRIVATE);
+    private void saveSymKey(String fileName, String secretKey) {
+        sPref = getSharedPreferences("MySymKeys", MODE_PRIVATE);
         SharedPreferences.Editor ed = sPref.edit();
-        ed.putString(SAVED_GK, "key1");
-        ed.putString(SAVED_VK, "key2");
+        ed.putString(fileName, secretKey);
         ed.apply();
-        Toast.makeText(this, "Text saved", Toast.LENGTH_SHORT).show();
     }
 
-    private void loadText() {
-        sPref = getSharedPreferences("MyKeysXML", MODE_PRIVATE);
-        String savedText = sPref.getString(SAVED_GK, "");
-        System.out.println(savedText);
-        Log.e("my text", savedText);
-        Toast.makeText(this, "Text loaded", Toast.LENGTH_SHORT).show();
-    }
-
-    private void showDialog() {
-
-        context = MainActivity.this;
-        String title = "Вибір дії";
-        String message = "Обрано файл ";
-        String button1String = "Зашифрувати";
-        String button2String = "Розшифрувати";
-
-        ad = new AlertDialog.Builder(context);
-        ad.setTitle(title);
-        ad.setMessage(message);
-        ad.setPositiveButton(button1String, new DialogInterface.OnClickListener() {
-            public void onClick(DialogInterface dialog, int arg1) {
-                Toast.makeText(context, "файл буде шифруватись",
-                        Toast.LENGTH_LONG).show();
-            }
-        });
-        ad.setNegativeButton(button2String, new DialogInterface.OnClickListener() {
-            public void onClick(DialogInterface dialog, int arg1) {
-                Toast.makeText(context, "файл буде розшифровуватись", Toast.LENGTH_LONG)
-                        .show();
-            }
-        });
-        ad.setCancelable(true);
-        ad.setOnCancelListener(new DialogInterface.OnCancelListener() {
-            public void onCancel(DialogInterface dialog) {
-                Toast.makeText(context, "Вы ничего не выбрали",
-                        Toast.LENGTH_LONG).show();
-            }
-        });
+    private String loadSymKey(String fileName) {
+        sPref = getSharedPreferences("MySymKeys", MODE_PRIVATE);
+        String savedSymKey = sPref.getString(fileName, "");
+        return savedSymKey;
     }
 
     private SharedPreferences sPref;

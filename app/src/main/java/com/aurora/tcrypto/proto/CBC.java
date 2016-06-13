@@ -23,13 +23,13 @@ public class CBC {
     private SecretKey keySpec;
     private IvParameterSpec ivSpec;
     private Charset CHARSET = Charset.forName("UTF8");
+    private String iv = "5151515151515151";
 
-    public CBC(String secretKey, String iv)
+    public CBC(String secretKey)
             throws NoSuchPaddingException, NoSuchAlgorithmException {
         keySpec = new SecretKeySpec(secretKey.getBytes(CHARSET), "AES");
         ivSpec = new IvParameterSpec(iv.getBytes(CHARSET));
         cipher = Cipher.getInstance(CIPHER_MODE);
-
     }
 
     public String decrypt(String input)
